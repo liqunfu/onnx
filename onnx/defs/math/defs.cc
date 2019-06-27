@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 #include <functional>
+#include "onnx/defs/function.h"
 #include "onnx/defs/schema.h"
 #include "onnx/defs/tensor_proto_util.h"
 
@@ -1502,5 +1503,60 @@ ONNX_OPERATOR_SET_SCHEMA(
             {"tensor(float16)", "tensor(float)", "tensor(double)"},
             "Constrain input and output types to float tensors.")
         .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput));
+
+static const char* sort_ver11_doc = R"DOC(
+    Sorts the elements of the input tensor along a given dimension.
+)DOC";
+
+ONNX_OPERATOR_SET_SCHEMA(
+    Sort,
+    10,
+    OpSchema()
+        .SetDoc(sort_ver11_doc)
+        .Input(0, "X", "Input tensor", "T")
+        .Output(
+            0,
+            "Values",
+            "Sorted output tensor.",
+            "T")
+        .Output(
+            1,
+            "Indices",
+            "Indices of sorted elements of the input tensor.",
+            "I")     
+        .Attr(
+            "axis",
+            "The axis along which to sort.",
+            AttributeProto::INT,
+            static_cast<int64_t>(-1))
+        .Attr(
+            "decending",
+            "Sorting order.",
+            AttributeProto::INT,
+            static_cast<int64_t>(1))
+        .TypeConstraint(
+            "T",
+            OpSchema::all_tensor_types(),
+            "Constrain input and output types to all tensors.")
+        .TypeConstraint(
+            "I",
+            {"tensor(int64)"},
+            "Constrain index tensor to int64")
+        .FunctionBody(FunctionBodyHelper::BuildNodes(
+            {// nodes: {outputs, op, inputs, attributes}
+             FunctionBodyHelper::Const<int64_t>("InputShapeSliceAxis", 0),
+             FunctionBodyHelper::Const<int64_t>("One", 1),
+             {{"InputShape"}, "Shape", {"X"}},
+             {{"InputShapeSliceStart"},
+              "Constant",
+              {},
+              {MakeRefAttribute("value", "axis", AttributeProto::INT)}},
+             {{"InputShapeSliceEnd"}, "Add", {"InputShapeSliceStart", "One"}},
+             {{"Values", "Indices"},
+              "TopK",
+              {"X", "InputShapeSlice"},
+              {MakeRefAttribute("axis", AttributeProto::INT)}},
+             {{"InputShapeSlice"}, "Slice", {"InputShape", "InputShapeSliceStart", "InputShapeSliceEnd", "InputShapeSliceAxis"}}
+            })));
 
 } // namespace ONNX_NAMESPACE
